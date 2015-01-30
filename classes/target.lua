@@ -3,25 +3,24 @@
   @Details: Target setting class that represents a 
             target logic setting.
 ]]
+if not CandyConfig then
+  dofile("candyconfig.lua")
+end
 
-TargetSetting = {}
-TargetSetting.__index = TargetSetting
+TargetSetting = extends(CandyConfig, "TargetSetting")
 
-TargetSetting.__class = "TargetSetting"
+TargetSetting.create = function(target, movement, stance, attack, range, equip, follow)
+  local setting = TargetSetting.internalCreate()
 
-TargetSetting.new = function(movement, attack, range, equip)
-  setting = {
-    movement = 0,
-    attack = nil,
-    range = {0, 100},
-    equip = {}
-  }
-  setting.movement = movement
+  setting.movement = movement or 0
+  setting.stance = stance or FightOffensive
   setting.attack = attack
-  setting.range = range
-  setting.equip = equip
-
-  setmetatable(setting, TargetSetting)
+  setting.range = range or {100, 0}
+  setting.equip = equip or {}
+  setting.target = target
+  setting.follow = follow ~= nil and follow or true
+  setting.index = 0
+  
   return setting
 end
 
@@ -30,7 +29,25 @@ function TargetSetting:getMovement()
 end
 
 function TargetSetting:setMovement(movement)
-  self.movement = movement
+  local oldMovement = self.movement
+  if movement ~= oldMovement then
+    self.movement = movement
+
+    signalcall(self.onMovementChange, self, movement, oldMovement)
+  end
+end
+
+function TargetSetting:getStance()
+  return self.stance
+end
+
+function TargetSetting:setStance(stance)
+  local oldStance = self.stance
+  if stance ~= oldStance then
+    self.stance = stance
+
+    signalcall(self.onStanceChange, self, stance, oldStance)
+  end
 end
 
 function TargetSetting:getAttack()
@@ -38,7 +55,42 @@ function TargetSetting:getAttack()
 end
 
 function TargetSetting:setAttack(attack)
-  self.attack = attack
+  local oldAttack = self.attack
+  if attack ~= oldAttack then
+    self.attack = attack
+
+    signalcall(self.onAttackChange, self, attack, oldAttack)
+  end
+end
+
+function TargetSetting:getRange(index)
+  local range = self.range
+  if index and self:isIndexValid(index) then
+    range = self.range[index]
+  end
+  return range
+end
+
+function TargetSetting:setRange(range, index)
+  if not index then
+    local oldRange = self.range
+    if oldRange ~= range then
+      self.range = range
+
+      signalcall(self.onRangeChange, self, range, oldRange)
+    end
+  else
+    if self:isIndexValid(index) then
+      local oldRange = self.range[index]
+      if oldRange ~= range then
+        self.range[index] = range
+
+        signalcall(self.onRangeChange, self, range, oldRange, index)
+      end
+    else
+      perror("Invalid index provided: " .. index)
+    end
+  end
 end
 
 function TargetSetting:getEquip()
@@ -46,46 +98,119 @@ function TargetSetting:getEquip()
 end
 
 function TargetSetting:setEquip(equip)
-  self.equip = equip
+  local oldEquip = self.equip
+  if equip ~= oldEquip then
+    self.equip = equip
+
+    signalcall(self.onEquipChange, self, equip, oldEquip)
+  end
+end
+
+function TargetSetting:getFollow()
+  return self.follow
+end
+
+function TargetSetting:setFollow(follow)
+  local oldFollow = self.follow
+  if follow ~= oldFollow then
+    self.follow = follow
+
+    signalcall(self.onFollowChange, self, follow, oldFollow)
+  end
+end
+
+function TargetSetting:getTarget()
+  return self.target
+end
+
+function TargetSetting:setTarget(target)
+  local oldTarget = self.target
+  if target ~= oldTarget then
+    self.target = target
+    
+    signalcall(self.onTargetChange, self, target, oldTarget)
+  end
+end
+
+function TargetSetting:getIndex()
+  return self.index
+end
+
+function TargetSetting:setIndex(index)
+  local oldIndex = self.index
+  if index ~= oldIndex then
+    self.index = index
+    
+    signalcall(self.onIndexChange, self, index, oldIndex)
+  end
+end
+
+function TargetSetting:isIndexValid(index)
+  return index > 0 and index < 3
+end
+
+
+function TargetSetting:toNode()
+  local node = CandyConfig.toNode(self)
+  
+  -- complex nodes
+
+  node.range = self.range
+  node.equip = self.equip
+
+  if self.attack then
+    node.attack = self.attack:toNode()
+  end
+  return node
+end
+
+function TargetSetting:parseNode(node)
+  CandyConfig.parseNode(self, node)
+
+  -- complex parse
+
+  if node.range then
+    for k,v in pairs(node.range) do
+      self.range[tonumber(k)] = v
+    end
+  end
+  if node.equip then
+    self.equip = node.equip
+  end
+  if node.attack then
+    self.attack = Attack.create()
+    self.attack:parseNode(node.attack)
+  end
 end
 
 --[[ Target Class]]
 
-Target = {}
-Target.__index = Target
+Target = extends(CandyConfig, "Target")
 
-Target.__class = "Target"
-
-Target.new = function(creature, priority, settings, loot, alarm)
-  target = {
-    creature = nil,
-    priority = 0,
-    settings = {},
-    loot = true,
-    alarm = false
-  }
-
-  if not creature or type(creature) ~= 'userdata' then
-    error('invalid creature provided.')
-  end
-  target.creature = creature
-  target.priority = priority
-  target.settings = settings
-  target.loot = loot
-  target.alarm = alarm
-
-  setmetatable(target, Target)
+Target.create = function(name, priority, settings, loot)
+  local target = Target.internalCreate()
+  
+  target.name = name or ""
+  target.priority = priority or 0
+  target.settings = settings or {}
+  target.loot = loot ~= nil and loot or true
+  
   return target
 end
 
 -- gets/sets
 
-function Target:getCreature()
-  return self.creature
+function Target:getName()
+  return self.name
 end
 
-function Target:setCreature(creature)
-  self.creature = creature
+function Target:setName(name)
+  local oldName = self.name
+  if name ~= oldName then
+    self.name = name
+
+    signalcall(self.onNameChange, self, name, oldName)
+  end
 end
 
 function Target:getPriority()
@@ -93,7 +218,16 @@ function Target:getPriority()
 end
 
 function Target:setPriority(priority)
-  self.priority = priority
+  local oldPriority = self.priority
+  if priority ~= oldPriority then
+    self.priority = priority
+
+    signalcall(self.onPriorityChange, self, priority, oldPriority)
+  end
+end
+
+function Target:getSetting(index)
+  return self.settings[index]
 end
 
 function Target:getSettings()
@@ -101,7 +235,22 @@ function Target:getSettings()
 end
 
 function Target:setSettings(settings)
-  self.settings = settings
+  local oldSettings = self.settings
+  if settings ~= oldSettings then
+    self.settings = settings
+    
+    signalcall(self.onSettingsChange, self, settings, oldSettings)
+  end
+end
+
+function Target:addSetting(setting)
+  if not table.contains(self.settings, setting) then
+    setting:setTarget(self)
+    setting:setIndex(#self.settings + 1)
+    table.insert(self.settings, setting)
+
+    signalcall(self.onAddSetting, self, setting)
+  end
 end
 
 function Target:getLoot()
@@ -109,16 +258,43 @@ function Target:getLoot()
 end
 
 function Target:setLoot(loot)
-  self.loot = loot
-end
+  local oldLoot = self.loot
+  if loot ~= oldLoot then
+    self.loot = loot
 
-function Target:getAlarm()
-  return self.alarm
-end
-
-function Target:setAlarm(alarm)
-  self.alarm = alarm
+    signalcall(self.onLootChange, self, loot, oldLoot)
+  end
 end
 
 -- methods
 
+function Target:toNode()
+  local node = CandyConfig.toNode(self)
+  
+  -- complex nodes
+
+  if self.settings then
+    node.settings = {}
+    for i,setting in pairs(self.settings) do
+      if setting then
+        node.settings[i] = setting:toNode()
+      end
+    end
+  end
+  return node
+end
+
+function Target:parseNode(node)
+  CandyConfig.parseNode(self, node)
+
+  -- complex parse
+
+  if node.settings then
+    self.settings = {}
+    for k,v in pairs(node.settings) do
+      local setting = TargetSetting.create(self)
+      setting:parseNode(v)
+      self.settings[tonumber(k)] = setting
+    end
+  end
+end

@@ -4,7 +4,7 @@
             main bot controls and functionality.
 ]]
 
-CandyBot = extends(UIWidget)
+CandyBot = extends(UIWidget, "CandyBot")
 CandyBot.window = nil
 CandyBot.options = {}
 CandyBot.defaultOptions = {}
@@ -13,13 +13,19 @@ dofile('consts.lua')
 dofile('helper.lua')
 dofile('logger.lua')
 
-dofile('classes/target.lua')
-dofile('classes/attack.lua')
+dofile('modules.lua')
+dofile('events.lua')
+dofile('listeners.lua')
+
+dofiles('classes')
+dofiles('classes/ui')
+dofiles('extensions')
 
 local botButton
 local botTabBar
 
-local enabled
+local enabled = false
+local writeDir = "/candybot"
 
 local function setupDefaultOptions()
   for _, module in pairs(Modules.getOptions()) do
@@ -30,18 +36,13 @@ local function setupDefaultOptions()
 end
 
 local function loadModules()
-  dofile('modules.lua')
   Modules.init()
 
   -- setup the default options
   setupDefaultOptions()
 end
 
-local function loadExtensions()
-  dofiles('extensions')
-end
-
-function CandyBot.init()
+function init()
   CandyBot.window = g_ui.displayUI('candybot.otui')
   CandyBot.window:setVisible(false)
 
@@ -53,13 +54,10 @@ function CandyBot.init()
   botTabBar:setContentWidget(CandyBot.window:getChildById('botContent'))
   botTabBar:setTabSpacing(-1)
 
-  -- bind keys
-  g_keyboard.bindKeyDown('Ctrl+Shift+B', CandyBot.toggle)
-  g_keyboard.bindKeyPress('Tab', function() botTabBar:selectNextTab() end, CandyBot.window)
-  g_keyboard.bindKeyPress('Shift+Tab', function() botTabBar:selectPrevTab() end, CandyBot.window)
-
-  -- load extensions
-  loadExtensions()
+  -- setup resources
+  if not g_resources.directoryExists(writeDir) then
+    g_resources.makeDir(writeDir)
+  end
 
   -- load modules
   loadModules()
@@ -81,7 +79,7 @@ function CandyBot.init()
   end
 end
 
-function CandyBot.terminate()
+function terminate()
   CandyBot.hide()
   disconnect(g_game, {
     onGameStart = CandyBot.online,
@@ -106,6 +104,9 @@ end
 
 function CandyBot.online()
   addEvent(CandyBot.loadOptions)
+
+  -- bind keys
+  g_keyboard.bindKeyDown('Ctrl+Shift+B', CandyBot.toggle)
 end
 
 function CandyBot.offline()
@@ -113,6 +114,7 @@ function CandyBot.offline()
 
   CandyBot.hide()
 
+  -- unbind keys
   g_keyboard.unbindKeyDown('Ctrl+Shift+B')
 end
 
@@ -158,6 +160,10 @@ function CandyBot.getParent()
   return CandyBot.window:getParent() -- main window
 end
 
+function CandyBot.getWriteDir()
+  return writeDir
+end
+
 function CandyBot.loadOptions()
   local char = g_game.getCharacterName()
 
@@ -184,22 +190,15 @@ function CandyBot.changeOption(key, state, loading)
   end
 
   if g_game.isOnline() then
-    Modules.notifyChange(key, state)
-
     local panel = CandyBot.window
 
     if loading then
-
+      local widget
       for k, p in pairs(Modules.getPanels()) do
-        if p:getChildById(key) ~= nil then
-          panel = p
-        end
+        widget = p:recursiveGetChildById(key)
+        if widget then break end
       end
-
-      local widget = panel:getChildById(key)
-      if not widget then
-        return
-      end
+      if not widget then print("no widget found") return end
 
       local style = widget:getStyle().__class
 
@@ -214,8 +213,14 @@ function CandyBot.changeOption(key, state, loading)
       elseif style == 'UIScrollBar' then
         local value = tonumber(state)
         if value then widget:setValue(value) end
+      elseif style == 'UIScrollArea' then
+        local child = widget:getChildById(state)
+        if child then print("found child") widget:focusChild(child, MouseFocusReason) end
       end
     end
+
+    Modules.notifyChange(key, state)
+
     local char = g_game.getCharacterName()
 
     if CandyBot.options[char] == nil then

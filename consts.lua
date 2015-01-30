@@ -3,6 +3,8 @@
   @Details: Constant variable declartions.
 ]]
 
+Consts = {}
+
 RestoreType = {
   cast = 1,
   item = 2
@@ -149,6 +151,12 @@ Runes = {
 Water = { 4597,4598,4599,4600,4601,4602,4635,4639,4640 }
 
 Flasks = { 283, 284, 285 }
+
+AttackModes = {
+  None = "No Mode",
+  SpellMode = "Spell Mode",
+  ItemMode = "Item Mode"
+}
 
 --[[Locales.installLocale({
   name = "pt",
